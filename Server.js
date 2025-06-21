@@ -1,51 +1,42 @@
-import express from 'express';
-import mongoose from 'mongoose';
-import session from 'express-session';
-import MongoStore from 'connect-mongo';
-import dotenv from 'dotenv';
+const express = require('express');
+const mongoose = require('mongoose');
+const session = require('express-session');
+const passport = require('passport');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const MongoStore = require('connect-mongo');
 
 dotenv.config();
-
 const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
-const SESSION_SECRET = process.env.SESSION_SECRET;
 
 // Middleware
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+}));
 app.use(express.json());
 
-// MongoDB Connection
-mongoose.connect(MONGO_URI).then(() => console.log('✅ MongoDB connected'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({ mongoUrl: process.env.MONGO_URI }),
+  cookie: { maxAge: 1000 * 60 * 60 * 24 },
+}));
 
-// Session Setup
-app.use(
-  session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: MONGO_URI,
-      collectionName: 'sessions'
-    }),
-    cookie: {
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
-      secure: false, // Set true if using HTTPS (e.g., in production with proxy)
-    }
-  })
-);
+require('./config/passportConfig')(passport);
+app.use(passport.initialize());
+app.use(passport.session());
+
+// DB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.error(err));
 
 // Routes
-app.get('/', (req, res) => {
-  if (req.session.views) {
-    req.session.views++;
-  } else {
-    req.session.views = 1;
-  }
+app.use('/auth', require('./routes/authRoutes'));
+app.use('/videos', require('./routes/videoRoutes'));
 
-  res.send(`👋 Hello! You've visited this page ${req.session.views} times.`);
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+app.listen(process.env.PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${process.env.PORT}`);
 });
